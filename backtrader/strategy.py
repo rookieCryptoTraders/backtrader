@@ -38,6 +38,7 @@ from .lineseries import LineSeriesStub
 from .metabase import ItemCollection, findowner
 from .trade import Trade
 from .utils import OrderedDict, AutoOrderedDict, AutoDictList
+from typing import Literal, List, Tuple
 
 
 class MetaStrategy(StrategyBase.__class__):
@@ -1279,6 +1280,55 @@ class Strategy(with_metaclass(MetaStrategy, StrategyBase)):
             return self.sell(data=data, size=possize - target, **kwargs)
 
         return None  # no execution target == possize
+
+    def order_targets(self, actions: List[Tuple[str, float]] = None,
+                      by: Literal['size', 'value', 'percent'] = 'size', **kwargs):
+        '''
+        Wrapper for order_target_size. Designed to judge the order of orders.
+
+        Parameters:
+        -----------
+        actions: List[Tuple[str, float]],
+            (ticker, target size/value)
+        '''
+
+        def _sort_stocklike(stocklike_actions):
+            possizes = [self.getposition(self.getdatabyname(action[0]), self.broker).size for action in stocklike_actions]
+            diff_list = [(action[1] - possize, action) for action, possize in
+                         zip(stocklike_actions, possizes)]  # target - current
+            # do the actions that gains cash first, then do the actions that costs cash
+            gain_cash_stocklike_actions= [action for diff,action in diff_list if diff <= 0]
+            cost_cash_stocklike_actions =[action for diff,action in diff_list if diff > 0]
+            return gain_cash_stocklike_actions, cost_cash_stocklike_actions
+
+        def _sort_futurelike(futurelike_actions):
+            possizes = [self.getposition(self.getdatabyname(action[0]), self.broker).size for action in
+                        futurelike_actions]
+            diff_list = [(abs(action[1]) - abs(possize), action) for action, possize in
+                         zip(futurelike_actions, possizes)]  # if target goes to 0, then the position will be closed, which means that we will gain cash
+            # do the actions that gains cash first, then do the actions that costs cash
+            gain_cash_futurelike_actions = [action for diff, action in diff_list if diff <= 0]
+            cost_cash_futurelike_actions = [action for diff, action in diff_list if diff > 0]
+            return gain_cash_futurelike_actions, cost_cash_futurelike_actions
+
+        if by in ['value', 'percent']:
+            raise NotImplementedError('order_targets only support by="size"')
+
+        type_list = [self.broker.comminfo[action[0]].stocklike for action in actions]
+        stocklike_actions = [action for action, type_ in zip(actions, type_list) if type_]
+        futurelike_actions = [action for action, type_ in zip(actions, type_list) if not type_]
+        gain_cash_stocklike_actions, cost_cash_stocklike_actions = _sort_stocklike(stocklike_actions)
+        gain_cash_futurelike_actions, cost_cash_futurelike_actions = _sort_futurelike(futurelike_actions)
+        # do the actions that gains cash first, then do the actions that costs cash
+        sorted_actions = gain_cash_stocklike_actions + gain_cash_futurelike_actions + cost_cash_stocklike_actions + cost_cash_futurelike_actions
+
+        order_res_list = []
+        for action in sorted_actions:
+            if by == 'size':
+                res = self.order_target_size(data=self.dnames[action[0]], target=action[1], **kwargs)
+                order_res_list.append(res)
+
+        return order_res_list
 
     def order_target_value(self, data=None, target=0.0, price=None, **kwargs):
         '''
