@@ -215,16 +215,9 @@ class CommInfoBase(with_metaclass(MetaParams)):
         '''Returns the value of a position given a price. For future-like
         objects it is fixed at size * margin'''
         if not self._stocklike:
-            return abs(position.size) * self.get_margin(price)
+            return position.size * self.get_margin(price)
 
-        size = position.size
-        if size >= 0:
-            return size * price
-
-        # With stocks, a short position is worth more as the price goes down
-        value = position.price * size  # original value
-        value += (position.price - price) * size  # increased value
-        return value
+        return position.size * price
 
     def _getcommission(self, size, price, pseudoexec):
         '''Calculates the commission of an operation at a given price
@@ -244,14 +237,14 @@ class CommInfoBase(with_metaclass(MetaParams)):
     def confirmexec(self, size, price):
         return self._getcommission(size, price, pseudoexec=False)
 
-    def profitandloss(self, size, price, newprice):
+    def profitandloss(self, size, entry_price, curr_price):
         '''Return actual profit and loss a position has'''
-        return size * (newprice - price) * self.p.mult
+        return size * (curr_price - entry_price) * self.p.mult
 
-    def cashadjust(self, size, price, newprice):
+    def cashadjust(self, size, entry_price, curr_price):
         '''Calculates cash adjustment for a given price difference'''
         if not self._stocklike:
-            return size * (newprice - price) * self.p.mult
+            return size * (curr_price - entry_price) * self.p.mult
 
         return 0.0
 

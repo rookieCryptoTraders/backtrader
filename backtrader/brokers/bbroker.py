@@ -433,21 +433,20 @@ class BackBroker(bt.BrokerBase):
             comminfo = self.getcommissioninfo(data)
             position = self.positions[data]
             # use valuesize:  returns raw value, rather than negative adj val
-            if not self.p.shortcash:
-                dvalue = comminfo.getvalue(position, data.close[0])
-            else:
-                dvalue = comminfo.getvaluesize(position.size, data.close[0])
+
+            dvalue = comminfo.getvaluesize(position.size, data.close[0])
 
             dunrealized = comminfo.profitandloss(position.size, position.price,
                                                  data.close[0])
+
+            if not self.p.shortcash:
+                dvalue = abs(dvalue)  # short selling adds value in this case
+
             if datas and len(datas) == 1:
                 if lever and dvalue > 0:
                     dvalue -= dunrealized
                     return (dvalue / comminfo.get_leverage()) + dunrealized
-                return dvalue  # raw data value requested, short selling is neg
-
-            if not self.p.shortcash:
-                dvalue = abs(dvalue)  # short selling adds value in this case
+                return dvalue  # raw data value requested, short selling is negative
 
             pos_value += dvalue
             unrealized += dunrealized
